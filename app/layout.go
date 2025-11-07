@@ -30,9 +30,10 @@ func (m *Model) renderLayout(leftPaneWidth, rightPaneWidth, paneHeight int) stri
 func (m *Model) renderLeftColumn(width, paneHeight int) string {
 	var panes []string
 
-	for i := 0; i < 4 && i < len(m.panes); i++ {
+	for i := 0; i < len(m.panes) && i < 4; i++ {
 		pane := m.panes[i]
-		isActive := i == m.activePane
+		// Left panes should only be active when focus is on left panes
+		isActive := i == m.activePane && m.focus == FocusLeftPanes
 
 		content := pane.View()
 		title := m.renderPaneTitle(pane.GetTitle(), i+1, isActive)
@@ -48,71 +49,55 @@ func (m *Model) renderLeftColumn(width, paneHeight int) string {
 }
 
 func (m *Model) renderRightColumn(width, height int) string {
-	if m.activePane == 4 && len(m.panes) > 4 {
-		return m.renderStashPane(width, height)
+	if m.activePane == 3 && len(m.panes) > 3 {
+		return m.renderGreetingPane(width, height)
 	}
 
-	return m.renderDiffPane(width, height)
+	return m.renderPreviewPane(width, height)
 }
 
-func (m *Model) renderStashPane(width, height int) string {
-	if len(m.panes) <= 4 {
-		return m.createPaneStyle(width, height, false).Render("No stash pane available")
+func (m *Model) renderGreetingPane(width, height int) string {
+	if len(m.panes) <= 3 {
+		return m.createPaneStyle(width, height, false).Render("No greeting pane available")
 	}
 
-	stashPane := m.panes[4]
-	isActive := m.activePane == 4
+	greetingPane := m.panes[3]
+	// Greeting pane should only be active when focus is on left panes
+	isActive := m.activePane == 3 && m.focus == FocusLeftPanes
 
-	content := stashPane.View()
-	title := m.renderPaneTitle(stashPane.GetTitle(), 5, isActive)
+	content := greetingPane.View()
+	title := m.renderPaneTitle(greetingPane.GetTitle(), 4, isActive)
 	fullContent := title + "\n" + content
 
 	style := m.createPaneStyle(width, height, isActive)
 	return style.Render(fullContent)
 }
 
-// renderDiffPane renders the diff pane in right column
-func (m *Model) renderDiffPane(width, height int) string {
-	title := m.renderPaneTitle("Diff", 0, false) // Not directly selectable
+// renderPreviewPane renders the preview pane in right column
+func (m *Model) renderPreviewPane(width, height int) string {
+	isActive := m.focus == FocusDetails
+	title := m.renderPaneTitle("Details", 0, isActive)
 
-	diffContent := m.renderScrollableDiffContent(height - 4) // Reserve space for title and borders
+	previewContent := m.renderScrollablePreviewContent(height - 4) // Reserve space for title and borders
 
-	fullContent := title + "\n" + diffContent
+	fullContent := title + "\n" + previewContent
 
-	style := m.createPaneStyle(width, height, false)
+	style := m.createPaneStyle(width, height, isActive)
 	return style.Render(fullContent)
 }
 
 func (m *Model) renderPaneTitle(title string, number int, isActive bool) string {
-	if number == 0 {
-		if isActive {
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575")).Bold(true).Render(title)
-		}
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FFEAA7")).Render(title)
-	}
+	titleStyle := m.styles.Title(isActive)
 
-	titleStyle := lipgloss.NewStyle()
-	if isActive {
-		titleStyle = titleStyle.Foreground(lipgloss.Color("#04B575")).Bold(true)
-	} else {
-		titleStyle = titleStyle.Foreground(lipgloss.Color("#FFEAA7"))
+	if number == 0 {
+		return titleStyle.Render(title)
 	}
 
 	return titleStyle.Render(fmt.Sprintf("[%d] %s", number, title))
 }
 
 func (m *Model) createPaneStyle(width, height int, isActive bool) lipgloss.Style {
-	baseStyle := lipgloss.NewStyle().
-		Width(width-2).
-		Height(height-2).
-		Padding(0, 1).
-		BorderStyle(lipgloss.NormalBorder())
-
-	if isActive {
-		return baseStyle.BorderForeground(lipgloss.Color("#04B575"))
-	}
-
-	return baseStyle.BorderForeground(lipgloss.Color("#6C5CE7"))
+	return m.styles.Pane(width, height, isActive)
 }
 
 func (m *Model) renderStatusBar() string {
@@ -122,10 +107,12 @@ func (m *Model) renderStatusBar() string {
 	}
 
 	var leftStatus string
-	if m.activePane != 4 {
-		leftStatus = fmt.Sprintf("Active: %s | 1-5: Switch | Tab: Next | j/k: Scroll diff | q: Quit", currentPaneName)
+	if m.focus == FocusDetails {
+		leftStatus = "Active: Details | Space: Back to panes | j/k: Scroll | q: Quit"
+	} else if m.activePane != 3 {
+		leftStatus = fmt.Sprintf("Active: %s | 1-4: Switch | Tab: Next | Space: Details | j/k: Scroll | q: Quit", currentPaneName)
 	} else {
-		leftStatus = fmt.Sprintf("Active: %s | 1-5: Switch | Tab: Next | j/k: Navigate | q: Quit", currentPaneName)
+		leftStatus = fmt.Sprintf("Active: %s | 1-4: Switch | Tab: Next | Space: Details | q: Quit", currentPaneName)
 	}
 
 	rightStatus := "TUI101 v0.1.0"
@@ -143,39 +130,38 @@ func (m *Model) renderStatusBar() string {
 
 	statusLine := leftStatus + strings.Repeat(" ", padding) + rightStatus
 
-	return lipgloss.NewStyle().
+	return m.styles.StatusBar.
 		Width(m.width).
-		Background(lipgloss.Color("#1A202C")).
-		Foreground(lipgloss.Color("#04B575")).
 		Render(statusLine)
 }
 
-func (m *Model) renderScrollableDiffContent(maxLines int) string {
-	diffLines := m.GetDiffLines()
-	scrollPos := m.GetDiffScrollPos()
+func (m *Model) renderScrollablePreviewContent(maxLines int) string {
+	previewLines := m.GetPreviewLines()
+	scrollPos := m.GetPreviewScrollPos()
 
-	if len(diffLines) == 0 {
-		return lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#74B9FF")).
-			Render("Select a file to see diff")
+	if len(previewLines) == 0 {
+		return m.styles.InfoText.Render("Select an item to see details")
 	}
 
 	start := scrollPos
 	end := scrollPos + maxLines
-	if end > len(diffLines) {
-		end = len(diffLines)
+	if end > len(previewLines) {
+		end = len(previewLines)
 	}
-	if start >= len(diffLines) {
-		start = len(diffLines) - 1
+	if start >= len(previewLines) {
+		start = len(previewLines) - 1
 	}
 	if start < 0 {
 		start = 0
 	}
 
-	visibleLines := diffLines[start:end]
+	visibleLines := previewLines[start:end]
 
 	var styledLines []string
-	for _, line := range visibleLines {
+	for i, line := range visibleLines {
+		actualIndex := start + i
+		isSelected := m.focus == FocusDetails && actualIndex == m.details.selectedLine
+
 		if len(line) > 120 {
 			line = line[:120] + "..."
 		}
@@ -185,28 +171,33 @@ func (m *Model) renderScrollableDiffContent(maxLines int) string {
 			continue
 		}
 
-		switch line[0] {
-		case '+':
-			styledLines = append(styledLines,
-				lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render(line))
-		case '-':
-			styledLines = append(styledLines,
-				lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")).Render(line))
-		case '@':
-			styledLines = append(styledLines,
-				lipgloss.NewStyle().Foreground(lipgloss.Color("#00FFFF")).Bold(true).Render(line))
-		default:
-			styledLines = append(styledLines,
-				lipgloss.NewStyle().Foreground(lipgloss.Color("#CCCCCC")).Render(line))
+		prefix := "  "
+		style := m.styles.Item(isSelected)
+
+		if isSelected {
+			prefix = m.styles.Cursor.Render("> ")
+			styledLines = append(styledLines, style.Render(prefix+line))
+		} else {
+			switch line[0] {
+			case '+':
+				style = lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00"))
+			case '-':
+				style = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000"))
+			case '@':
+				style = lipgloss.NewStyle().Foreground(lipgloss.Color("#00FFFF")).Bold(true)
+			default:
+				style = lipgloss.NewStyle().Foreground(lipgloss.Color("#CCCCCC"))
+			}
+			styledLines = append(styledLines, style.Render(prefix+line))
 		}
 	}
 
 	result := strings.Join(styledLines, "\n")
 	if scrollPos > 0 {
-		result = "  ↑ more content above\n" + result
+		result = "  ^ more content above\n" + result
 	}
-	if end < len(diffLines) {
-		result = result + "\n  ↓ more content below"
+	if end < len(previewLines) {
+		result = result + "\n  v more content below"
 	}
 
 	return result
