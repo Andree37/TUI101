@@ -21,7 +21,7 @@ type WorkspaceUpdateMsg struct {
 type WorkspaceInfo struct {
 	Name       string
 	VersionSet string
-	UpdatedAt  time.Time
+	LastSync   time.Time
 }
 
 func NewStatusPane() *StatusPane {
@@ -174,14 +174,15 @@ func (s *StatusPane) loadWorkspaceInfo() {
 	})
 
 	s.AddItem(PaneItem{
-		Display: "Version Set: v1.0.0",
-		Value:   "v1.0.0",
+		Display: "Version Set: @a1b2c3d",
+		Value:   "@a1b2c3d",
 		Type:    "version",
 	})
 
+	lastSync := time.Now().Add(-2 * time.Hour)
 	s.AddItem(PaneItem{
-		Display: fmt.Sprintf("Updated: %s", time.Now().Format("2006-01-02 15:04")),
-		Value:   time.Now().Format(time.RFC3339),
+		Display: fmt.Sprintf("Last Sync: %s", lastSync.Format("2006-01-02 15:04")),
+		Value:   lastSync.Format(time.RFC3339),
 		Type:    "metadata",
 	})
 }
@@ -189,8 +190,8 @@ func (s *StatusPane) loadWorkspaceInfo() {
 func (s *StatusPane) gatherWorkspaceInfo() WorkspaceInfo {
 	return WorkspaceInfo{
 		Name:       "JoeWorkspace",
-		VersionSet: "v1.0.0",
-		UpdatedAt:  time.Now(),
+		VersionSet: "@a1b2c3d",
+		LastSync:   time.Now(),
 	}
 }
 
@@ -213,8 +214,8 @@ func (s *StatusPane) updateFromWorkspaceInfo(msg WorkspaceUpdateMsg) {
 	})
 
 	s.AddItem(PaneItem{
-		Display: fmt.Sprintf("Updated: %s", info.UpdatedAt.Format("2006-01-02 15:04")),
-		Value:   info.UpdatedAt.Format(time.RFC3339),
+		Display: fmt.Sprintf("Last Sync: %s", info.LastSync.Format("2006-01-02 15:04")),
+		Value:   info.LastSync.Format(time.RFC3339),
 		Type:    "metadata",
 	})
 }

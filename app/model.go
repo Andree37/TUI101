@@ -107,8 +107,6 @@ func NewModel() *Model {
 	m.panes = []panes.Pane{
 		panes.NewStatusPane(),   // Workspace
 		panes.NewBranchesPane(), // Packages
-		panes.NewCommitsPane(),  // Pull Requests
-		panes.NewStashPane(),    // Greeting
 	}
 
 	return m
@@ -188,10 +186,6 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) tea.Cmd {
 		return m.handlePaneNavigation(func() { m.setActivePane(0) })
 	case "2":
 		return m.handlePaneNavigation(func() { m.setActivePane(1) })
-	case "3":
-		return m.handlePaneNavigation(func() { m.setActivePane(2) })
-	case "4":
-		return m.handlePaneNavigation(func() { m.setActivePane(3) })
 
 	case "ctrl+r":
 		return m.refreshAll()
@@ -230,17 +224,12 @@ func (m *Model) handleVerticalNavigation(down bool) tea.Cmd {
 		return tea.Batch()
 	}
 
-	// When focus is on left panes and not on greeting pane, allow scrolling details
-	if m.activePane != 3 {
-		if down {
-			m.details.ScrollDown(m.height - 5)
-		} else {
-			m.details.ScrollUp()
-		}
-		return tea.Batch()
+	if down {
+		m.details.ScrollDown(m.height - 5)
+	} else {
+		m.details.ScrollUp()
 	}
-
-	return nil
+	return tea.Batch()
 }
 
 func (m *Model) handleJumpToTop() tea.Cmd {
@@ -338,20 +327,112 @@ func (m *Model) updateDiffContent() {
 		return
 	}
 
-	// Show details of the selected item
+	// Show pane-specific details
+	paneName := activePane.GetTitle()
+
+	var details []string
+
+	switch paneName {
+	case "Packages":
+		details = m.formatPackageDetails(selectedItem)
+	case "Workspace":
+		details = m.formatWorkspaceDetails(selectedItem)
+	default:
+		details = m.formatGenericDetails(selectedItem, paneName)
+	}
+
+	m.details.lines = details
+}
+
+func (m *Model) formatPackageDetails(item *panes.PaneItem) []string {
+	var details []string
+
+	// Check if we have package metadata
+	if pkg, ok := item.Metadata.(panes.Package); ok {
+		// Header
+		details = append(details, "")
+		details = append(details, m.styles.Highlight.Render(fmt.Sprintf("  Package: %s", pkg.Name)))
+		details = append(details, "")
+
+		// Description
+		details = append(details, m.styles.WorkspaceName.Render("Description"))
+		details = append(details, "  "+pkg.Description)
+		details = append(details, "")
+
+		// Branch information
+		details = append(details, m.styles.WorkspaceName.Render("Branch Information"))
+		details = append(details, fmt.Sprintf("  Current Branch: %s", m.styles.PackageActive.Render(pkg.Branch)))
+		if pkg.HasUpstream {
+			details = append(details, fmt.Sprintf("  Upstream Status: %s", m.styles.PROpen.Render(fmt.Sprintf("↑ %d commits ahead", pkg.UpstreamAhead))))
+			details = append(details, "    "+m.styles.Dimmed.Render("(mainline has new changes you don't have)"))
+		} else {
+			details = append(details, fmt.Sprintf("  Upstream Status: %s", m.styles.PackageActive.Render("✓ up to date")))
+		}
+		details = append(details, "")
+
+		// Last commit
+		details = append(details, m.styles.WorkspaceName.Render("Last Commit"))
+		details = append(details, "  "+pkg.LastCommit)
+		details = append(details, fmt.Sprintf("  Author: %s", m.styles.Dimmed.Render(pkg.LastAuthor)))
+		details = append(details, "")
+
+		// Working directory status
+		details = append(details, m.styles.WorkspaceName.Render("Working Directory"))
+		if pkg.ModifiedFiles > 0 {
+			details = append(details, fmt.Sprintf("  Modified Files: %s", m.styles.PROpen.Render(fmt.Sprintf("%d", pkg.ModifiedFiles))))
+		} else {
+			details = append(details, fmt.Sprintf("  Modified Files: %s", m.styles.PackageActive.Render("0 (clean)")))
+		}
+		details = append(details, "")
+
+		// Status
+		details = append(details, m.styles.WorkspaceName.Render("Status"))
+		statusText := pkg.Status
+		if pkg.Status == "active" {
+			statusText = m.styles.PackageActive.Render("✓ Active")
+		}
+		details = append(details, "  "+statusText)
+		details = append(details, "")
+
+		// Actions
+		details = append(details, "")
+		details = append(details, m.styles.Dimmed.Render("Available Actions:"))
+		details = append(details, m.styles.Dimmed.Render("  • Press 'r' to refresh"))
+		if pkg.HasUpstream {
+			details = append(details, m.styles.Dimmed.Render("  • Press 's' to sync with mainline"))
+		}
+		details = append(details, m.styles.Dimmed.Render("  • Press 'c' to switch branch"))
+
+	} else {
+		details = append(details, "Package Details")
+		details = append(details, "")
+		details = append(details, fmt.Sprintf("Name: %s", item.Display))
+		details = append(details, fmt.Sprintf("Value: %s", item.Value))
+	}
+
+	return details
+}
+
+func (m *Model) formatWorkspaceDetails(item *panes.PaneItem) []string {
+	var details []string
+	details = append(details, "Workspace Details:")
+	details = append(details, "")
+	details = append(details, fmt.Sprintf("Name: %s", item.Display))
+	details = append(details, fmt.Sprintf("Value: %s", item.Value))
+	details = append(details, fmt.Sprintf("Type: %s", item.Type))
+	return details
+}
+
+func (m *Model) formatGenericDetails(item *panes.PaneItem, paneName string) []string {
 	var details []string
 	details = append(details, "Selected Item Details:")
 	details = append(details, "")
-	details = append(details, fmt.Sprintf("Name: %s", selectedItem.Display))
-	details = append(details, fmt.Sprintf("Value: %s", selectedItem.Value))
-	details = append(details, fmt.Sprintf("Type: %s", selectedItem.Type))
+	details = append(details, fmt.Sprintf("Name: %s", item.Display))
+	details = append(details, fmt.Sprintf("Value: %s", item.Value))
+	details = append(details, fmt.Sprintf("Type: %s", item.Type))
 	details = append(details, "")
-
-	// Add pane-specific details
-	paneName := activePane.GetTitle()
 	details = append(details, fmt.Sprintf("From: %s pane", paneName))
-
-	m.details.lines = details
+	return details
 }
 
 func (m *Model) GetDiffLines() []string {

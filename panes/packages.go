@@ -19,8 +19,67 @@ type PackagesUpdateMsg struct {
 }
 
 type Package struct {
-	Name   string
-	Status string
+	Name          string
+	Status        string
+	Branch        string
+	HasUpstream   bool
+	UpstreamAhead int
+	LastCommit    string
+	LastAuthor    string
+	ModifiedFiles int
+	Description   string
+}
+
+func (p *PackagesPane) loadPackages() {
+	p.Clear()
+
+	packages := []Package{
+		{
+			Name:          "antonio",
+			Status:        "active",
+			Branch:        "main",
+			HasUpstream:   true,
+			UpstreamAhead: 3,
+			LastCommit:    "feat: Add user authentication",
+			LastAuthor:    "john.doe",
+			ModifiedFiles: 5,
+			Description:   "Core authentication service",
+		},
+		{
+			Name:          "miguel",
+			Status:        "active",
+			Branch:        "feature/auth",
+			HasUpstream:   false,
+			UpstreamAhead: 0,
+			LastCommit:    "wip: Working on OAuth integration",
+			LastAuthor:    "jane.smith",
+			ModifiedFiles: 12,
+			Description:   "OAuth and token management",
+		},
+		{
+			Name:          "rita",
+			Status:        "active",
+			Branch:        "main",
+			HasUpstream:   true,
+			UpstreamAhead: 1,
+			LastCommit:    "fix: Resolve database connection issue",
+			LastAuthor:    "bob.wilson",
+			ModifiedFiles: 2,
+			Description:   "Database layer and migrations",
+		},
+	}
+
+	p.packages = packages
+
+	for _, pkg := range packages {
+		display := p.formatPackageDisplay(pkg)
+		p.AddItem(PaneItem{
+			Display:  display,
+			Value:    pkg.Name,
+			Type:     pkg.Status,
+			Metadata: pkg,
+		})
+	}
 }
 
 func NewBranchesPane() *PackagesPane {
@@ -80,7 +139,6 @@ func (p *PackagesPane) View() string {
 	var lines []string
 	visibleItems := p.GetVisibleItems()
 
-	// Show scroll indicator at top if needed
 	if p.GetScrollOffset() > 0 {
 		lines = append(lines, p.st.RenderScrollIndicator("up"))
 	}
@@ -93,12 +151,10 @@ func (p *PackagesPane) View() string {
 		lines = append(lines, line)
 	}
 
-	// Show scroll indicator at bottom if needed
 	if p.GetScrollOffset()+len(visibleItems) < len(p.items) {
 		lines = append(lines, p.st.RenderScrollIndicator("down"))
 	}
 
-	// Add footer with package count
 	if len(p.items) > 0 {
 		lines = append(lines, "")
 		footer := p.st.RenderFooter("Packages", p.GetSelectedIndex()+1, len(p.items))
@@ -127,7 +183,6 @@ func (p *PackagesPane) formatPackageItem(item PaneItem, isSelected bool) string 
 		style = p.st.UnselectedItem
 	}
 
-	// Override with selection style if selected and active
 	if isSelected && p.IsActive() {
 		style = p.st.SelectedItem
 		return style.Render(fmt.Sprintf("%s %s", p.st.RenderCursor(true), item.Display))
@@ -156,31 +211,41 @@ func (p *PackagesPane) GetAvailableActions() []string {
 	return []string{"refresh"}
 }
 
-func (p *PackagesPane) loadPackages() {
-	p.Clear()
-
-	packages := []Package{
-		{Name: "antonio", Status: "active"},
-		{Name: "miguel", Status: "active"},
-		{Name: "rita", Status: "active"},
-	}
-
-	p.packages = packages
-
-	for _, pkg := range packages {
-		p.AddItem(PaneItem{
-			Display: pkg.Name,
-			Value:   pkg.Name,
-			Type:    pkg.Status,
-		})
-	}
-}
-
 func (p *PackagesPane) gatherPackages() []Package {
 	return []Package{
-		{Name: "antonio", Status: "active"},
-		{Name: "miguel", Status: "active"},
-		{Name: "rita", Status: "active"},
+		{
+			Name:          "antonio",
+			Status:        "active",
+			Branch:        "main",
+			HasUpstream:   true,
+			UpstreamAhead: 3,
+			LastCommit:    "feat: Add user authentication",
+			LastAuthor:    "john.doe",
+			ModifiedFiles: 5,
+			Description:   "Core authentication service",
+		},
+		{
+			Name:          "miguel",
+			Status:        "active",
+			Branch:        "feature/auth",
+			HasUpstream:   false,
+			UpstreamAhead: 0,
+			LastCommit:    "wip: Working on OAuth integration",
+			LastAuthor:    "jane.smith",
+			ModifiedFiles: 12,
+			Description:   "OAuth and token management",
+		},
+		{
+			Name:          "rita",
+			Status:        "active",
+			Branch:        "main",
+			HasUpstream:   true,
+			UpstreamAhead: 1,
+			LastCommit:    "fix: Resolve database connection issue",
+			LastAuthor:    "bob.wilson",
+			ModifiedFiles: 2,
+			Description:   "Database layer and migrations",
+		},
 	}
 }
 
@@ -190,10 +255,24 @@ func (p *PackagesPane) updateFromPackagesMsg(msg PackagesUpdateMsg) {
 	p.packages = msg.Packages
 
 	for _, pkg := range msg.Packages {
+		display := p.formatPackageDisplay(pkg)
 		p.AddItem(PaneItem{
-			Display: pkg.Name,
-			Value:   pkg.Name,
-			Type:    pkg.Status,
+			Display:  display,
+			Value:    pkg.Name,
+			Type:     pkg.Status,
+			Metadata: pkg,
 		})
 	}
+}
+
+func (p *PackagesPane) formatPackageDisplay(pkg Package) string {
+	display := pkg.Name
+
+	display += fmt.Sprintf(" [%s]", pkg.Branch)
+
+	if pkg.HasUpstream {
+		display += fmt.Sprintf(" ↑%d", pkg.UpstreamAhead)
+	}
+
+	return display
 }

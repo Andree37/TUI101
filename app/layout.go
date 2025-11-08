@@ -109,10 +109,8 @@ func (m *Model) renderStatusBar() string {
 	var leftStatus string
 	if m.focus == FocusDetails {
 		leftStatus = "Active: Details | Space: Back to panes | j/k: Scroll | q: Quit"
-	} else if m.activePane != 3 {
-		leftStatus = fmt.Sprintf("Active: %s | 1-4: Switch | Tab: Next | Space: Details | j/k: Scroll | q: Quit", currentPaneName)
 	} else {
-		leftStatus = fmt.Sprintf("Active: %s | 1-4: Switch | Tab: Next | Space: Details | q: Quit", currentPaneName)
+		leftStatus = fmt.Sprintf("Active: %s | 1-2: Switch | Tab: Next | Space: Details | j/k: Scroll | q: Quit", currentPaneName)
 	}
 
 	rightStatus := "TUI101 v0.1.0"
@@ -162,42 +160,21 @@ func (m *Model) renderScrollablePreviewContent(maxLines int) string {
 		actualIndex := start + i
 		isSelected := m.focus == FocusDetails && actualIndex == m.details.selectedLine
 
-		if len(line) > 120 {
-			line = line[:120] + "..."
-		}
-
-		if len(line) == 0 {
-			styledLines = append(styledLines, "")
-			continue
-		}
-
-		prefix := "  "
-		style := m.styles.Item(isSelected)
-
 		if isSelected {
-			prefix = m.styles.Cursor.Render("> ")
-			styledLines = append(styledLines, style.Render(prefix+line))
+			prefix := m.styles.Cursor.Render("> ")
+			styledLines = append(styledLines, m.styles.SelectedItem.Render(prefix+line))
 		} else {
-			switch line[0] {
-			case '+':
-				style = lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00"))
-			case '-':
-				style = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000"))
-			case '@':
-				style = lipgloss.NewStyle().Foreground(lipgloss.Color("#00FFFF")).Bold(true)
-			default:
-				style = lipgloss.NewStyle().Foreground(lipgloss.Color("#CCCCCC"))
-			}
-			styledLines = append(styledLines, style.Render(prefix+line))
+			styledLines = append(styledLines, "  "+line)
 		}
 	}
 
 	result := strings.Join(styledLines, "\n")
+
 	if scrollPos > 0 {
-		result = "  ^ more content above\n" + result
+		result = m.styles.Dimmed.Render("  ▲ more content above") + "\n" + result
 	}
 	if end < len(previewLines) {
-		result = result + "\n  v more content below"
+		result = result + "\n" + m.styles.Dimmed.Render("  ▼ more content below")
 	}
 
 	return result
